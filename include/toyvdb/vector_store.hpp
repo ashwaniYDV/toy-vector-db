@@ -105,8 +105,7 @@ public:
     [[nodiscard]] Dim         dim() const noexcept { return dim_; }
     [[nodiscard]] std::size_t size() const noexcept { return live_count_; }
     /// Number of allocated slots (live + tombstoned); internal ids are < slot_count().
-    /// NOTE: this is *not* std::vector-style capacity (reserved storage) -- it is the
-    /// count of slots ever allocated. Tombstoned slots are reclaimed by Engine::compact().
+    /// NOTE: it is the count of slots ever allocated. Tombstoned slots are reclaimed by Engine::compact().
     [[nodiscard]] std::size_t slot_count() const noexcept { return ext_ids_.size(); }
 
 private:

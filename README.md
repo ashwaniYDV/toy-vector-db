@@ -29,17 +29,30 @@ All mutations flow through a small logical **op model** (`Insert` / `Update` / `
 The WAL serializes ops, the store applies them, and indexes are *derived views* over the
 store. This is event-sourcing-flavoured and makes the storage backend pluggable.
 
+```mermaid
+flowchart TD
+    RAG["RagEngine — chunk, embed, retrieve, prompt"]
+    ENG["Engine — DB ops, durability, parallel search"]
+    IDX["Index (interface) — stores ids only"]
+    FLAT["FlatIndex (exact oracle)"]
+    HNSW["HnswIndex (ANN)"]
+    VS["VectorStore — SoA arena, ids, tombstones, metadata"]
+    LOG["LogStore (WAL)"]
+    BLOB["BlobStore (snapshots)"]
+
+    RAG --> ENG
+    ENG --> IDX
+    IDX --> FLAT
+    IDX --> HNSW
+    ENG --> VS
+    ENG --> LOG
+    ENG --> BLOB
+    FLAT -. "reads vectors" .-> VS
+    HNSW -. "reads vectors" .-> VS
 ```
-        Engine (facade: owns store + index, injects LogStore/BlobStore)
-          |
-   +------+-------------------------+
-   |                                |
- VectorStore (in-memory)        Index (polymorphic)
-   - SoA arena<float>             - Flat (exact) | HNSW (ANN)
-   - id maps, tombstones          - stores InternalId only
-   - Metadata
-   - apply(Op)  <-- WAL seam
-```
+
+Dashed edges mark the **durability seams** (WAL append, snapshot/recover, replay): they
+sit off the hot read path and are detailed below.
 
 Extension seams already in place:
 - `LogStore` / `BlobStore` interfaces (file impls now; object-store later) for the WAL
