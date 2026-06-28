@@ -17,7 +17,7 @@ struct SearchParams {
 
     /// Optional allowed-set for metadata-filtered search. When non-null, only
     /// internal ids whose bit is set are eligible to be returned. The bitset is
-    /// expected to be sized to the store's capacity.
+    /// expected to be sized to the store's slot_count().
     const Bitset* allowed = nullptr;
 };
 
