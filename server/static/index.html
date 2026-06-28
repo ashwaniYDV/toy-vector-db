@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>toy-vector-db</title>
+<style>
+  :root { --bg:#0f1117; --panel:#181b24; --line:#2a2f3a; --fg:#e6e9ef; --muted:#9aa3b2;
+          --accent:#6ea8fe; --ok:#4ade80; --err:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 ui-monospace,Menlo,Consolas,monospace; background:var(--bg); color:var(--fg); }
+  header { padding:18px 24px 0; }
+  header h1 { font-size:18px; margin:0; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .tabs { display:flex; gap:6px; padding:14px 24px 0; border-bottom:1px solid var(--line); }
+  .tab { background:none; border:0; color:var(--muted); padding:10px 16px; cursor:pointer;
+         border-bottom:2px solid transparent; margin:0; font:inherit; font-weight:600; }
+  .tab:hover { color:var(--fg); }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .pane { display:none; }
+  .pane.active { display:block; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px; display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .statbar { grid-column:1 / -1; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+             padding:12px 16px; display:flex; justify-content:space-between; align-items:center; gap:16px; }
+  .statbar .s b { color:var(--accent); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card h2 { margin:0 0 12px; font-size:14px; color:var(--accent); }
+  .card.span { grid-column:1 / -1; }
+  label { display:block; color:var(--muted); margin:8px 0 2px; font-size:12px; }
+  input, textarea, select { width:100%; background:#0c0e14; color:var(--fg); border:1px solid var(--line);
+          border-radius:6px; padding:8px; font:inherit; }
+  textarea { resize:vertical; min-height:64px; }
+  button.act { margin-top:10px; background:var(--accent); color:#0c0e14; border:0; border-radius:6px;
+          padding:8px 14px; font:inherit; font-weight:600; cursor:pointer; }
+  button.act:hover { filter:brightness(1.08); }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; }
+  pre { background:#0c0e14; border:1px solid var(--line); border-radius:6px; padding:10px;
+        overflow:auto; max-height:320px; white-space:pre-wrap; word-break:break-word; margin:10px 0 0; }
+  .hint { color:var(--muted); font-size:12px; margin-top:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>toy-vector-db</h1>
+  <span class="sub">in-memory vector DB + RAG engine &mdash; REST console</span>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-tab="rag" onclick="showTab('rag')">RAG</button>
+  <button class="tab" data-tab="vector" onclick="showTab('vector')">Vector Store</button>
+</div>
+
+<!-- ======================= Vector Store engine ======================= -->
+<div class="pane" id="pane-vector">
+  <div class="wrap">
+    <div class="statbar">
+      <div class="s" id="stats-vector">loading…</div>
+      <button class="act" style="margin:0" onclick="loadStats()">refresh</button>
+    </div>
+
+    <div class="card">
+      <h2>Insert vector</h2>
+      <label>id</label>
+      <input id="vi-id" placeholder="vec-1" />
+      <label>vector (4 comma-separated numbers)</label>
+      <input id="vi-vec" placeholder="0.1, 0.2, 0.3, 0.4" />
+      <label>metadata (JSON, optional)</label>
+      <input id="vi-meta" placeholder='{"lang":"en","year":2024}' />
+      <button class="act" onclick="insertVector()">POST /api/vectors</button>
+      <div class="hint">raw vector store &mdash; dim fixed at 4 (L2 / HNSW)</div>
+      <pre id="vi-out"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Search vectors</h2>
+      <label>query vector (4 numbers)</label>
+      <input id="vs-vec" placeholder="0.1, 0.2, 0.3, 0.4" />
+      <div class="row">
+        <div><label>k</label><input id="vs-k" type="number" value="5" /></div>
+        <div><label>ef (HNSW, optional)</label><input id="vs-ef" type="number" placeholder="64" /></div>
+      </div>
+      <label>filter (JSON, optional — equality, AND-ed)</label>
+      <input id="vs-filter" placeholder='{"lang":"en"}' />
+      <button class="act" onclick="searchVectors()">POST /api/search</button>
+      <pre id="vs-out"></pre>
+    </div>
+
+    <div class="card span">
+      <h2>Delete vector</h2>
+      <div class="row">
+        <input id="vd-id" placeholder="vec-1" />
+        <button class="act" style="flex:0 0 auto" onclick="deleteVector()">DELETE /api/vectors/:id</button>
+      </div>
+      <pre id="vd-out"></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ RAG engine ============================ -->
+<div class="pane active" id="pane-rag">
+  <div class="wrap">
+    <div class="statbar">
+      <div class="s" id="stats-rag">loading…</div>
+      <button class="act" style="margin:0" onclick="loadStats()">refresh</button>
+    </div>
+
+    <div class="card">
+      <h2>Ingest document</h2>
+      <div class="hint">RAG store &mdash; text is chunked, embedded (dim 256), and indexed</div>
+      <label>doc id</label>
+      <input id="di-id" placeholder="doc-1" />
+      <label>text</label>
+      <textarea id="di-text" placeholder="Paste some text. It will be chunked, embedded, and indexed. Re-ingesting the same id replaces its chunks."></textarea>
+      <button class="act" onclick="ingestDoc()">POST /api/documents</button>
+      <pre id="di-out"></pre>
+    </div>
+
+    <div class="card">
+      <h2>RAG search / prompt</h2>
+      <label>query</label>
+      <input id="rq-q" placeholder="how does recovery work?" />
+      <label>k</label>
+      <input id="rq-k" type="number" value="3" />
+      <div class="row">
+        <button class="act" onclick="ragSearch()">retrieve</button>
+        <button class="act" onclick="ragPrompt()">build prompt</button>
+      </div>
+      <pre id="rq-out"></pre>
+    </div>
+
+    <div class="card span">
+      <h2>Delete document</h2>
+      <div class="row">
+        <input id="dd-id" placeholder="doc-1" />
+        <button class="act" style="flex:0 0 auto" onclick="deleteDoc()">DELETE /api/documents/:id</button>
+      </div>
+      <div class="hint">removes the document and all of its chunks</div>
+      <pre id="dd-out"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// When opened directly as a file (file://), relative /api calls won't work, so
+// fall back to the default server origin and warn the user.
+const API_BASE = location.protocol === "file:" ? "http://localhost:8080" : "";
+if (location.protocol === "file:") {
+  const b = document.createElement("div");
+  b.style.cssText = "background:#3a2a00;color:#ffd479;padding:10px 24px;border-bottom:1px solid #5a4a1a;font-size:13px";
+  b.innerHTML = 'Opened as a local file &mdash; calling <b>http://localhost:8080</b>. ' +
+                'Start the server (<code>./build/server/toyvdb_server</code>) and, for best results, ' +
+                'open <b>http://localhost:8080</b> directly.';
+  document.body.prepend(b);
+}
+
+function showTab(name) {
+  for (const el of document.querySelectorAll(".pane")) el.classList.toggle("active", el.id === "pane-" + name);
+  for (const el of document.querySelectorAll(".tab")) el.classList.toggle("active", el.dataset.tab === name);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  if (!res.ok) throw new Error(typeof data === "object" && data.error ? data.error : text);
+  return data;
+}
+
+function show(id, data) { $(id).textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2); }
+function fail(id, e) { $(id).textContent = "error: " + e.message; }
+
+function parseVec(s) { return s.split(",").map(x => x.trim()).filter(x => x.length).map(Number); }
+function parseJsonOrUndef(s) { s = s.trim(); if (!s) return undefined; return JSON.parse(s); }
+
+async function loadStats() {
+  try {
+    const s = await api("GET", "/api/stats");
+    $("stats-vector").innerHTML =
+      `Vector store: <b>${s.vector.size}</b> vectors &middot; dim ${s.vector.dim} &middot; ${s.vector.index}`;
+    $("stats-rag").innerHTML =
+      `RAG store: <b>${s.rag.documents}</b> docs &middot; <b>${s.rag.chunks}</b> chunks &middot; dim ${s.rag.dim}`;
+  } catch (e) {
+    $("stats-vector").textContent = "error: " + e.message;
+    $("stats-rag").textContent = "error: " + e.message;
+  }
+}
+
+async function insertVector() {
+  try {
+    const body = { id: $("vi-id").value.trim(), vector: parseVec($("vi-vec").value) };
+    const meta = parseJsonOrUndef($("vi-meta").value);
+    if (meta) body.metadata = meta;
+    show("vi-out", await api("POST", "/api/vectors", body));
+    loadStats();
+  } catch (e) { fail("vi-out", e); }
+}
+
+async function searchVectors() {
+  try {
+    const body = { vector: parseVec($("vs-vec").value), k: Number($("vs-k").value) };
+    const ef = $("vs-ef").value.trim(); if (ef) body.ef = Number(ef);
+    const filter = parseJsonOrUndef($("vs-filter").value); if (filter) body.filter = filter;
+    show("vs-out", await api("POST", "/api/search", body));
+  } catch (e) { fail("vs-out", e); }
+}
+
+async function deleteVector() {
+  try {
+    const id = encodeURIComponent($("vd-id").value.trim());
+    show("vd-out", await api("DELETE", "/api/vectors/" + id));
+    loadStats();
+  } catch (e) { fail("vd-out", e); }
+}
+
+async function ingestDoc() {
+  try {
+    const body = { id: $("di-id").value.trim(), text: $("di-text").value };
+    show("di-out", await api("POST", "/api/documents", body));
+    loadStats();
+  } catch (e) { fail("di-out", e); }
+}
+
+async function ragSearch() {
+  try {
+    const body = { query: $("rq-q").value, k: Number($("rq-k").value) };
+    show("rq-out", await api("POST", "/api/rag/search", body));
+  } catch (e) { fail("rq-out", e); }
+}
+
+async function ragPrompt() {
+  try {
+    const data = await api("POST", "/api/rag/prompt", { query: $("rq-q").value });
+    show("rq-out", data.prompt);
+  } catch (e) { fail("rq-out", e); }
+}
+
+async function deleteDoc() {
+  try {
+    const id = encodeURIComponent($("dd-id").value.trim());
+    show("dd-out", await api("DELETE", "/api/documents/" + id));
+    loadStats();
+  } catch (e) { fail("dd-out", e); }
+}
+
+loadStats();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+_deps/
+
+# IDE / editor
+.vscode/
+.idea/
+.cache/
+*.swp
+.DS_Store
+
+# Test / bench artifacts
+*.log
+*.wal
+*.snapshot
+/data/
+Testing/
